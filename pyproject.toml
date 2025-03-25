@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imagination_aimo2"
+version = "0.0.1"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+# FIXME: have not go through dependencies now
+dependencies = [
+    "tqdm",
+    "pandas",
+    "datasets",
+    "fschat", "transformers", "accelerate",
+    "termcolor",
+    "PyYaml",
+    "ipdb",
+    "ipython",
+    "black",
+    "lmdeploy"
+]
+
+[project.optional-dependencies]
+dev = ["pre-commit", "black"]
+
+[tool.setuptools.packages.find]
+exclude = ["docs", "dist*", "scripts*", "tests*", "data*", "results*"]
+
+[tool.wheel]
+exclude = ["docs", "dist*", "scripts*", "tests*", "data*", "results*"]
