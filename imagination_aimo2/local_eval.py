@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 import shutil
 import asyncio
-from collections import Counter, OrderedDict
+from collections import OrderedDict
 from typing import List, Tuple, Dict, Any
 
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
@@ -25,6 +25,8 @@ from transformers import set_seed
 import pandas as pd
 from lmdeploy import pipeline, TurbomindEngineConfig, GenerationConfig
 from datasets import Dataset
+
+from imagination_aimo2.aggregators import *
 
 ## ---- Setup logging utils ---- ##
 LEVEL = "INFO"
@@ -101,32 +103,6 @@ class AnswerExtractor:
             num = int(nums[-1])
 
         return num % 1000
-
-
-class SimpleMajorityAnswerAggregator:
-    @staticmethod
-    def aggregate_answer(cot_answers, code_answers) -> int:
-        final_code_answers = [
-            list(dct.values())[-1] if dct else None for dct in code_answers
-        ]
-        final_cot_answers = [
-            list(dct.values())[-1] if dct else None for dct in cot_answers
-        ]
-        # Just use all answers to do the vote
-        # TODO: if code/cot & outputs length is related to the overall correct ratio.
-        # can add some weighting strategy here
-        valid_answers = [
-            int(ans)
-            for ans in final_code_answers + final_cot_answers
-            if ans is not None
-        ]
-        if not valid_answers:
-            return -1
-        # Get most frequent number
-        aggregated_answer = sorted(
-            Counter(valid_answers).items(), key=lambda item: -item[1]
-        )[0][0]
-        return aggregated_answer % 1000
 
 
 class PythonREPL:
@@ -239,7 +215,7 @@ class BasicActor:
         # TODO: let's see what we need to configure for these
         self.python_executor = PythonREPL()
         self.answer_extractor = AnswerExtractor()
-        self.answer_aggregator = SimpleMajorityAnswerAggregator()
+        self.answer_aggregator = AllVoteMajorityAggregator()
 
         # Prepare callbacks for `stream_generate`
         self.callbacks = [
@@ -356,6 +332,7 @@ class BasicActor:
             python_code_map_list,
             code_exec_error_map_list,
             outputs,
+            question_duration,
         )
 
     def stream_generate(self, prompts, gen_config, callbacks):
@@ -660,6 +637,7 @@ def _report_statistics(results, log_each_question=False):
                 "code_exec_error_map_list",
             ]
         ]
+
         final_code_answers = [
             list(dct.values())[-1] if dct else None for dct in code_answers
         ]
@@ -776,6 +754,14 @@ def _report_statistics(results, log_each_question=False):
     avg_single_correct_code_priority_ratio = np.mean(correct_code_priority_ratio_list)
     avg_single_avg_out_len = np.mean(avg_out_len_list)
 
+    if "question_duration" in results[0]:
+        question_duration_list = [result["question_duration"] for result in results]
+        total_question_duration = np.sum(question_duration_list)
+    else:
+        # To be compatible with the dumped results.json by the old code
+        question_duration_list = None
+        total_question_duration = None
+
     avg_no_code_ratio = np.mean(no_code_ratio_list)
     avg_code_exec_error_ratio = np.mean(code_exec_error_ratio_list)
     avg_answer_wrong_fail_parseint_ratio = np.mean(
@@ -814,6 +800,8 @@ def _report_statistics(results, log_each_question=False):
         "aggregated_correct": aggregated_correct,
         "num_sample_list": num_sample_list,
         "num_result": num_result,
+        "total_question_duration": total_question_duration,
+        "question_duration_list": question_duration_list,
     }
     return statistics_dct
 
@@ -894,6 +882,7 @@ if __name__ == "__main__":
                 python_code_map_list,
                 code_exec_error_map_list,
                 outputs,
+                question_duration,
             ) = actor.predict_for_question(question, id_)
 
             # Store result
@@ -908,6 +897,7 @@ if __name__ == "__main__":
                     "python_code_map_list": python_code_map_list,
                     "code_exec_error_map_list": code_exec_error_map_list,
                     "correct_answer": correct_answer,
+                    "question_duration": question_duration,
                 }
             )
             with open(

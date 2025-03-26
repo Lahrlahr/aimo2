@@ -4,7 +4,7 @@ main_model:
     gpu_indices: [0, 1]
   inference_cfg:
     max_batch_size: 32
-    quant_policy: 8 # 0: fp16
+    quant_policy: 0 # 0: fp16
     enable_prefix_caching: true
     cache_max_entry_count: 0.95
     max_prefill_token_num: 8192

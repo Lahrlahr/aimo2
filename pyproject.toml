@@ -20,7 +20,8 @@ dependencies = [
     "ipdb",
     "ipython",
     "black",
-    "lmdeploy"
+    "lmdeploy",
+    "tomark"
 ]
 
 [project.optional-dependencies]
