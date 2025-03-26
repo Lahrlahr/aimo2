@@ -395,7 +395,7 @@ class BasicActor:
 
         thread = threading.Thread(target=put_into_queue, args=(resp_queue,))
         thread.start()
-        last_response = None
+        last_response_list = [None] * num_prompts
         while 1:
             try:
                 response = resp_queue.get_nowait()
@@ -422,7 +422,7 @@ class BasicActor:
                                 response,
                             )
                 else:
-                    last_response = response
+                    last_response_list[index] = response
                 if response.finish_reason is not None:
                     completed_status[index] = True
                     for callback_finish_reason, callback_func in callbacks_on_finish:
@@ -439,37 +439,36 @@ class BasicActor:
                                 response,
                             )
             except queue.Empty:
-                if last_response and self.callback_every_fast_forward:
-                    response = last_response
-                    index = response.index
-                    if completed_status[index]:
-                        continue
-                    for callback_ind, (_every_n, callback_func) in enumerate(
-                        callbacks_every_n
-                    ):
-                        if (
-                            yield_counts[index]
-                            - last_callback_yield_counts[callback_ind][index]
-                            >= _every_n
+                if self.callback_every_fast_forward:
+                    for index in range(num_prompts):
+                        if completed_status[index] or last_response_list[index] is None:
+                            continue
+                        for callback_ind, (_every_n, callback_func) in enumerate(
+                            callbacks_every_n
                         ):
-                            LOGGER.info(
-                                f"{index}, {yield_counts[index]},"
-                                f" {last_callback_yield_counts[callback_ind][index]}"
-                            )
-                            last_callback_yield_counts[callback_ind][index] = (
+                            if (
                                 yield_counts[index]
-                            )
-                            callback_func(
-                                index,
-                                outputs,
-                                cot_answers,
-                                code_answers,
-                                token_counts,
-                                python_code_map_list,
-                                code_exec_error_map_list,
-                                self.main_model,
-                                response,
-                            )
+                                - last_callback_yield_counts[callback_ind][index]
+                                >= _every_n
+                            ):
+                                LOGGER.info(
+                                    f"{index}, {yield_counts[index]},"
+                                    f" {last_callback_yield_counts[callback_ind][index]}"
+                                )
+                                last_callback_yield_counts[callback_ind][index] = (
+                                    yield_counts[index]
+                                )
+                                callback_func(
+                                    index,
+                                    outputs,
+                                    cot_answers,
+                                    code_answers,
+                                    token_counts,
+                                    python_code_map_list,
+                                    code_exec_error_map_list,
+                                    self.main_model,
+                                    last_response_list[index],
+                                )
 
         # TODO: if a callback flag stop. just rush to the final generated token, and try one parse.
 
