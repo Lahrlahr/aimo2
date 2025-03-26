@@ -21,7 +21,8 @@ dependencies = [
     "ipython",
     "black",
     "lmdeploy",
-    "tomark"
+    "tomark",
+    "grpcio", "polars" # for use by local_eval_kaggle.py and the kaggle_evaluation module
 ]
 
 [project.optional-dependencies]

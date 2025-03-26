@@ -69,12 +69,27 @@ class AllVoteMajorityAggregator:
         valid_answers = [
             int(ans)
             for ans in final_code_answers + final_cot_answers
-            if ans is not None
+            if ans is not None and int(ans) > 0
         ]
         if not valid_answers:
-            return -1
-        # Get most frequent number
+            return 49
+        # New weighting strategy
+        weighted_answers = defaultdict(float)
+        
+        for answer in valid_answers:
+            # Default weight is 1.0
+            weight = 1.0
+            
+            # Apply 0.6 weight for answers < 20 or answers that are multiples of 100
+            if answer <= 20 or answer % 100 == 0:
+                weight = 0.6
+                
+            weighted_answers[answer] += weight
+        
+        # Get the answer with the highest weight
+        # When weights are equal, prefer the larger answer
         aggregated_answer = sorted(
-            Counter(valid_answers).items(), key=lambda item: -item[1]
+            weighted_answers.items(), key=lambda item: (-item[1], -item[0])
         )[0][0]
+        
         return aggregated_answer % 1000
