@@ -543,7 +543,7 @@ class BasicActor:
         python_codes = self.answer_extractor.extract_python_code(text)
         if python_codes:
             # Only execute the last one
-            # TODO: check whether the model will output multiple versions of code, do revise during thinking
+            # currently, the answer extractor actually only return the last matched code
             python_code = self.answer_extractor.process_python_code(python_codes[-1])
             exec_success, exec_output = self.python_executor(python_code)
             if exec_success:

@@ -198,10 +198,12 @@ def to_markdown(output_dirs):
     """
     gen_cfg_fields = ["max_new_tokens", "temperature", "repetition_penalty"]
     table = []
+
     for output_dir in output_dirs:
         if not os.path.exists(os.path.join(output_dir, "statistics.json")):
             print(f"Skip {output_dir} as no `statistics.json` is under this dir")
             continue
+
         cfg = read_file(os.path.join(output_dir, "config.yaml"))
         stats = read_file(os.path.join(output_dir, "statistics.json"))
         results = read_file(os.path.join(output_dir, "results.json"))
@@ -209,6 +211,8 @@ def to_markdown(output_dirs):
 
         # Model
         dct["Model"] = os.path.basename(cfg["main_model"]["model_cfg"]["model_path"])
+        # Output dir
+        dct["output dir"] = output_dir
         # Quantization. NOTE: not robust, use convention to include "awq" in the model name
         quant_str = "AWQ4 " if "awq" in dct["Model"] else ""
         _quant_policy = cfg["main_model"]["inference_cfg"]["quant_policy"]
@@ -227,7 +231,7 @@ def to_markdown(output_dirs):
         )
 
         # Stats
-        # add_fields_statistics(dct, cfg, stats, results)
+        add_fields_statistics(dct, cfg, stats, results)
 
         # Aggregation ablation
         # add_fields_compare_aggregation(
@@ -235,68 +239,72 @@ def to_markdown(output_dirs):
         # )
 
         # Prompt list ablation (Aggregation acc comparison): 16 Code V.S. 16 CoT V.S. 8 Code + 8 CoT
-        mix_bootstrap_sample_time = 40
-        add_fields_compare_promptlist(
-            dct,
-            cfg,
-            stats,
-            results,
-            aggregator=all_voter_1,
-            mix_bootstrap_sample_time=mix_bootstrap_sample_time,
-        )
-        # Prompt list ablation (Avg single ratio comparison): 16 Code V.S. 16 CoT V.S. 8 Code + 8 CoT
-        avg_single_ratio_16cot = calculate_avg_single_ratios_(
-            results, cot_prompt_index_list
-        )  # return 4 number
-        avg_single_ratio_16code = calculate_avg_single_ratios_(
-            results, code_prompt_index_list
-        )
-        # return mix_bootstrap_sample_timex4 numbers
-        avg_single_ratio_8cot8code = np.array(
-            [
-                calculate_avg_single_ratios_(
-                    results,
-                    random.sample(cot_prompt_index_list, 8)
-                    + random.sample(code_prompt_index_list, 8),
-                )
-                for _ in range(mix_bootstrap_sample_time)
-            ]
-        )
-        field_prefixes = ["only cot", "only code", "cot (code aux)", "code (cot aux)"]
-        for which_s_ratio in range(4):
-            field_prefix = field_prefixes[which_s_ratio]
-            dct.update(
-                {
-                    f"{field_prefix} 16CoT prompts": (
-                        f"{avg_single_ratio_16cot[which_s_ratio]:.2f}"
-                    ),
-                    f"{field_prefix} 16Code prompts": (
-                        f"{avg_single_ratio_16code[which_s_ratio]:.2f}"
-                    ),
-                    f"{field_prefix} 8CoT+8Code prompts (mean)": "{:.2f}".format(
-                        np.mean(avg_single_ratio_8cot8code[:, which_s_ratio])
-                    ),
-                    f"{field_prefix} 8CoT+8Code prompts (min, 1/4 quantile, 3/4 quantile, max)": (
-                        "{:.2f} {:.2f} {:.2f} {:.2f}".format(
-                            np.min(avg_single_ratio_8cot8code[:, which_s_ratio]),
-                            np.quantile(
-                                avg_single_ratio_8cot8code[:, which_s_ratio], 0.25
-                            ),
-                            np.quantile(
-                                avg_single_ratio_8cot8code[:, which_s_ratio], 0.75
-                            ),
-                            np.max(avg_single_ratio_8cot8code[:, which_s_ratio]),
-                        )
-                    ),
-                }
-            )
+        # mix_bootstrap_sample_time = 40
+        # add_fields_compare_promptlist(
+        #     dct,
+        #     cfg,
+        #     stats,
+        #     results,
+        #     aggregator=all_voter_1,
+        #     mix_bootstrap_sample_time=mix_bootstrap_sample_time,
+        # )
+        # # Prompt list ablation (Avg single ratio comparison): 16 Code V.S. 16 CoT V.S. 8 Code + 8 CoT
+        # avg_single_ratio_16cot = calculate_avg_single_ratios_(
+        #     results, cot_prompt_index_list
+        # )  # return 4 number
+        # avg_single_ratio_16code = calculate_avg_single_ratios_(
+        #     results, code_prompt_index_list
+        # )
+        # # return mix_bootstrap_sample_timex4 numbers
+        # avg_single_ratio_8cot8code = np.array(
+        #     [
+        #         calculate_avg_single_ratios_(
+        #             results,
+        #             random.sample(cot_prompt_index_list, 8)
+        #             + random.sample(code_prompt_index_list, 8),
+        #         )
+        #         for _ in range(mix_bootstrap_sample_time)
+        #     ]
+        # )
+        # field_prefixes = ["only cot", "only code", "cot (code aux)", "code (cot aux)"]
+        # for which_s_ratio in range(4):
+        #     field_prefix = field_prefixes[which_s_ratio]
+        #     dct.update(
+        #         {
+        #             f"{field_prefix} 16CoT prompts": (
+        #                 f"{avg_single_ratio_16cot[which_s_ratio]:.2f}"
+        #             ),
+        #             f"{field_prefix} 16Code prompts": (
+        #                 f"{avg_single_ratio_16code[which_s_ratio]:.2f}"
+        #             ),
+        #             f"{field_prefix} 8CoT+8Code prompts (mean)": "{:.2f}".format(
+        #                 np.mean(avg_single_ratio_8cot8code[:, which_s_ratio])
+        #             ),
+        #             f"{field_prefix} 8CoT+8Code prompts (min, 1/4 quantile, 3/4 quantile, max)": (
+        #                 "{:.2f} {:.2f} {:.2f} {:.2f}".format(
+        #                     np.min(avg_single_ratio_8cot8code[:, which_s_ratio]),
+        #                     np.quantile(
+        #                         avg_single_ratio_8cot8code[:, which_s_ratio], 0.25
+        #                     ),
+        #                     np.quantile(
+        #                         avg_single_ratio_8cot8code[:, which_s_ratio], 0.75
+        #                     ),
+        #                     np.max(avg_single_ratio_8cot8code[:, which_s_ratio]),
+        #                 )
+        #             ),
+        #         }
+        #     )
 
-        # Output dir
-        dct["output dir"] = output_dir
         for key in dct:
             if isinstance(dct[key], float):
                 dct[key] = f"{dct[key]:.2f}"
         table.append(dct)
+
+    print(f"Processed {len(table)} records.")
+
+    if not table:
+        return ""
+
     markdown = Tomark.table(table)
     return markdown
 

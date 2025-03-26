@@ -21,7 +21,9 @@ dependencies = [
     "ipython",
     "black",
     "lmdeploy",
-    "tomark"
+    "tomark", "matplotlib", "seaborn", # for analysis scripts
+    "autoawq", # for run awq quantization (scripts/awq_quantize.py)
+    "partial-json-parser" # for run smoothquant quantization (`lmdeploy lite smoothquant`)
 ]
 
 [project.optional-dependencies]
