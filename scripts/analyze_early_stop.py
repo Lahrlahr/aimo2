@@ -5,16 +5,20 @@ import glob
 import json
 import yaml
 
+import pandas as pd
 import numpy as np
 import matplotlib
 
 matplotlib.use("Agg")
+from matplotlib.patches import Patch
 from matplotlib import pyplot as plt
 import seaborn as sn
+from transformers import AutoTokenizer
 from imagination_aimo2.local_eval import PythonREPL, AnswerExtractor
 
 answer_extractor = AnswerExtractor()
 python_executor = PythonREPL()
+tokenizer = AutoTokenizer.from_pretrained("models/dpsk-qwen-14b-finetune-v1-epoch4-awq")
 
 
 def read_file(filename, raw=False):
@@ -85,7 +89,7 @@ def plot_answer_ratio(answer_stats_for_exp, save_path):
     ax.set_xticks(range(0, num_questions))
     ax.set_xticklabels([f"q{ind}" for ind in range(0, num_questions)], fontsize=6)
 
-    plt.savefig(save_path)
+    ax.get_figure().savefig(save_path)
     plt.close()
 
 
@@ -103,9 +107,15 @@ def get_answers_status_for_question(output_dir, ques_ind, correct_answer):
     os.makedirs(code_extraction_dir, exist_ok=True)
 
     for sample_ind, sample in enumerate(samples):
+        sample_token_len = len(tokenizer(sample)["input_ids"])
+
         cot_answers = [
             (
-                match.span(1),
+                (
+                    match.start(1),
+                    match.end(1),
+                    len(tokenizer(sample[: match.end(0)])["input_ids"]),
+                ),
                 answer_extractor.canonicalize_number(match.group(1)),
             )
             for match in list(re.finditer(r"oxed{(.*?)}", sample))
@@ -135,6 +145,7 @@ def get_answers_status_for_question(output_dir, ques_ind, correct_answer):
                 wf.write(
                     f"# Matched token index: {code_match.start(1)} -"
                     f" {code_match.end(1)}\n"
+                    f"# Execution success: {1 if exec_success else 0}"
                     + python_code
                 )
             with open(exec_output_file, "w") as wf:
@@ -149,7 +160,13 @@ def get_answers_status_for_question(output_dir, ques_ind, correct_answer):
                     #     code_answers_status_for_sample.append(OTHER_ERROR)
                     code_answers_status_for_sample.append(
                         (
-                            code_match.span(1),
+                            (
+                                code_match.start(1),
+                                code_match.end(1),
+                                len(
+                                    tokenizer(sample[: code_match.end(0)])["input_ids"]
+                                ),
+                            ),
                             int(answer == correct_answer) + 1,
                             IS_CODE_ANSWER,
                         )
@@ -162,22 +179,137 @@ def get_answers_status_for_question(output_dir, ques_ind, correct_answer):
             cot_answers_status_for_sample + code_answers_status_for_sample
         )
 
-        # Calculate how much earlier (in string length) the early-stop version get the answer
-        # I don't want to call the tokenizer now, let's just calculate the string length instead of the token length!
-        # print the string position of the first answer match's ending, and the total length
+        # Calculate how much earlier (in token length) the early-stop version get the answer
+        # print the token position of the first answer match's ending, the last answer match's ending,
+        # and the total token length
         if answers_status_for_sample:
-            print(answers_status_for_sample[0][0][1], len(sample))
+            print(
+                answers_status_for_sample[0][0][2],
+                answers_status_for_sample[-1][0][2],
+                sample_token_len,
+            )
             earlystop_lengths_for_question.append(
-                (answers_status_for_sample[0][0][1], len(sample))
+                (
+                    answers_status_for_sample[0][0][2],
+                    answers_status_for_sample[-1][0][2],
+                    sample_token_len,
+                )
             )
         else:
-            earlystop_lengths_for_question.append((len(sample), len(sample)))
+            # no answer, so no early stop
+            earlystop_lengths_for_question.append(
+                (sample_token_len, sample_token_len, sample_token_len)
+            )
         answers_status_for_sample = [
             (item[0][0], item[1], item[2]) for item in answers_status_for_sample
         ]
         answers_status_for_question.append(answers_status_for_sample)
 
     return answers_status_for_question, earlystop_lengths_for_question
+
+
+def _add_legend(colors, labels, ax, **kwargs):
+    ax.legend(
+        handles=[
+            Patch(facecolor=color, label=label) for color, label in zip(colors, labels)
+        ],
+        **kwargs,
+    )
+
+
+def plot_answer_token_length(
+    answers_status_for_exp, earlystop_lengths_for_exp, save_path
+):
+    num_samples = len(earlystop_lengths_for_exp[0])
+    plt.figure()
+    df_earlystop_lengths_for_exp = pd.DataFrame(
+        [
+            {
+                "ques_ind": ques_ind,
+                "sample_ind": sample_ind,
+                "sample_length": lengths_for_sample[2],
+                "first_answer_length": lengths_for_sample[0],
+                "last_answer_length": lengths_for_sample[1],
+            }
+            for ques_ind, lengths_for_question in enumerate(earlystop_lengths_for_exp)
+            for sample_ind, lengths_for_sample in enumerate(lengths_for_question)
+        ]
+    )
+
+    # Plot overall sample length's bar
+    sn.barplot(
+        df_earlystop_lengths_for_exp,
+        x="ques_ind",
+        y="sample_length",
+        hue="sample_ind",
+        palette=["#EEEEEE"] * num_samples,
+        legend=None,
+    )
+
+    # Plot last answer's length's bar; set color based on correctness of the answer
+    # light green & light red
+    colors = [
+        [
+            (
+                "#EEEEEE"
+                if len(answer_status) == 0
+                else ("#afeba0" if answer_status[-1][1] == CORRECT else "#ed928c")
+            )
+            for answer_status in answer_status_for_question
+        ]
+        for answer_status_for_question in answers_status_for_exp
+    ]  # num_questions * num_samples
+    colors = list(zip(*colors))  # num_samples * num_questions
+    ax = sn.barplot(
+        df_earlystop_lengths_for_exp,
+        x="ques_ind",
+        y="last_answer_length",
+        hue="sample_ind",
+        palette=["#ADD8E6"] * num_samples,
+        legend=None,
+    )
+    for bar_question, colors_for_a_sample_index in zip(
+        ax.containers[-num_samples:], colors
+    ):
+        # ax.containers will be of length (2*num_samples), each have num_questions bars
+        for bar_sample, color_sample in zip(bar_question, colors_for_a_sample_index):
+            bar_sample.set_facecolor(color_sample)
+
+    # Plot first answer's length's bar; set color based on correctness of the answer
+    # dark green & dark red
+    colors = [
+        [
+            (
+                "#EEEEEE"
+                if len(answer_status) == 0
+                else ("#327521" if answer_status[0][1] == CORRECT else "#b04735")
+            )
+            for answer_status in answer_status_for_question
+        ]
+        for answer_status_for_question in answers_status_for_exp
+    ]
+    colors = list(zip(*colors))  # num_samples * num_questions
+    ax = sn.barplot(
+        df_earlystop_lengths_for_exp,
+        x="ques_ind",
+        y="first_answer_length",
+        hue="sample_ind",
+        palette=["#00008B"] * num_samples,
+        legend=None,
+    )
+    for bar_question, colors_question in zip(ax.containers[-num_samples:], colors):
+        # ax.containers will be of length (3*num_samples), each have num_questions bars
+        for bar_sample, color_sample in zip(bar_question, colors_question):
+            bar_sample.set_facecolor(color_sample)
+
+    _add_legend(
+        ["#327521", "#b04735", "#afeba0", "#ed928c"],
+        ["First Correct", "First Wrong", "Last Correct", "Last Wrong"],
+        ax,
+    )
+
+    plt.savefig(save_path)
+    plt.close()
 
 
 def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True):
@@ -190,8 +322,11 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
             glob.glob(os.path.join(output_dir, "outputs_per_question", "*.json"))
         )
         results = read_file(os.path.join(output_dir, "results.json"))
-        answers_status_for_exp = []
+
         answer_stats_for_exp = []
+        answers_status_for_exp = []
+        earlystop_lengths_for_exp = []
+
         for ques_ind in range(num_questions):
             correct_answer = results[ques_ind]["correct_answer"]
 
@@ -199,13 +334,10 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
             cache_file_for_question = os.path.join(cache_dir, f"{ques_ind}.json")
             if reuse_cache and os.path.exists(cache_file_for_question):
                 loaded = read_file(cache_file_for_question)
-                if isinstance(loaded, dict):
-                    answers_status_for_question, earlystop_lengths_for_question = (
-                        loaded["answers_status"],
-                        loaded["earlystop_lengths"],
-                    )
-                else:  # list, for back compatability of previous cache
-                    answers_status_for_question = loaded
+                answers_status_for_question, earlystop_lengths_for_question = (
+                    loaded["answers_status"],
+                    loaded["earlystop_lengths"],
+                )
             else:
                 answers_status_for_question, earlystop_lengths_for_question = (
                     get_answers_status_for_question(
@@ -220,6 +352,7 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
                         },
                         wf,
                     )
+            answers_status_for_exp.append(answers_status_for_question)
 
             num_samples = len(answers_status_for_question)
 
@@ -237,6 +370,8 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
                         for list_ in plot_answers_status_for_question
                     ],
                     cmap=cmap,
+                    vmin=0,
+                    vmax=4,
                 )
 
                 ax.set_yticks(0.5 + np.arange(0, num_samples))
@@ -299,10 +434,17 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
             answer_stats_for_exp.append(
                 [sample_one_answer, fc_lc, fw_lw, fc_lw, fw_lc, sample_no_answer]
             )
+            earlystop_lengths_for_exp.append(earlystop_lengths_for_question)
 
         save_path = os.path.join(output_dir, "answer_refine_vis.pdf")
         print(f"Start plotting answer ratio to {save_path} ...")
         plot_answer_ratio(answer_stats_for_exp, save_path)
+
+        save_path = os.path.join(output_dir, "answer_token_length.pdf")
+        print(f"Start plotting answer ratio to {save_path} ...")
+        plot_answer_token_length(
+            answers_status_for_exp, earlystop_lengths_for_exp, save_path
+        )
 
 
 if __name__ == "__main__":
