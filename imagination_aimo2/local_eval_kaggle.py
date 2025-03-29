@@ -290,40 +290,35 @@ class BasicActor:
             "user_prefix": "",
             "user_suffix": "",
         }
-        prompt_expand_lists = [
-            [
-                (
-                    common_prompt.get("system", "") + prompt_choice.get("system", ""),
-                    common_prompt.get("user_prefix", "")
-                    + prompt_choice.get("user_prefix", ""),
-                    prompt_choice.get("user_suffix", "")
-                    + common_prompt.get("user_suffix", ""),
-                )
-            ]
-            * prompt_choice.get("number", 1)
-            for prompt_choice in prompt_list
-        ]
+        
+        # Create expanded prompt lists with their sample types
+        prompt_expand_lists = []
+        for prompt_choice in prompt_list:
+            system_prompt = common_prompt.get("system", "") + prompt_choice.get("system", "")
+            user_prefix = common_prompt.get("user_prefix", "") + prompt_choice.get("user_prefix", "")
+            user_suffix = prompt_choice.get("user_suffix", "") + common_prompt.get("user_suffix", "")
+            
+            # Determine if this is a code sample based on the system prompt
+            is_code_sample = "python code" in system_prompt.lower() or "code" in system_prompt.lower()
+            
+            prompt_expand_lists.append(
+                [(system_prompt, user_prefix, user_suffix, is_code_sample)] * prompt_choice.get("number", 1)
+            )
+        
         if prompt_list_combine == "concat":
             prompt_list = sum(prompt_expand_lists, [])
         elif prompt_list_combine == "random":
             prompt_list = sum(prompt_expand_lists, [])
             random.shuffle(prompt_list)
         else:  # interleave
-            prompt_list = sum(prompt_expand_lists, [])
-            _max_len = max([len(single_list) for single_list in prompt_expand_lists])
-            prompt_list = sum(
-                [
-                    sum(
-                        [
-                            single_list[ind : ind + 1]
-                            for single_list in prompt_expand_lists
-                        ],
-                        [],
-                    )
-                    for ind in range(_max_len)
-                ],
-                [],
-            )
+            # Interleave the prompts from different categories
+            prompt_list = []
+            max_len = max(len(single_list) for single_list in prompt_expand_lists)
+            for i in range(max_len):
+                for single_list in prompt_expand_lists:
+                    if i < len(single_list):
+                        prompt_list.append(single_list[i])
+        
         return prompt_list
 
     def _init_models(self, model_dict, cfg):
@@ -392,8 +387,13 @@ class BasicActor:
 
     def predict_for_question(self, question: str, id_=None) -> int:
         """Predict answer for a single question"""
+
         # Start timing this question
-        question_start_time = time.time()
+        self.question_start_time = time.time()
+        self.valid_answers = []
+        self.consistency_stop_triggered = False
+
+        # Start timing this question
         if time.time() > self.cutoff_time:
             return 210
 
@@ -413,7 +413,7 @@ class BasicActor:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_prefix + question + user_suffix},
             ]
-            for system, user_prefix, user_suffix in self.prompt_list
+            for system, user_prefix, user_suffix, _ in self.prompt_list
         ]
 
         # Generate and process model outputs
@@ -426,9 +426,20 @@ class BasicActor:
             outputs,
         ) = self.stream_generate(prompts, self.gen_config, self.callbacks)
 
+        # Filter CoT answers if code answers exist
+        filtered_cot_answers = []
+        for idx, (cot_ans, code_ans) in enumerate(zip(cot_answers, code_answers)):
+            filtered_cot = OrderedDict()
+            if cot_ans and code_ans:
+                print(f"[Sample {idx+1}] Both CoT and code answers exist. Using only code answer.")
+                filtered_cot = OrderedDict()  
+            else:
+                filtered_cot = cot_ans
+            filtered_cot_answers.append(filtered_cot)
+
         # Combine and select final answer
         aggregated_answer = self.answer_aggregator.aggregate_answer(
-            cot_answers, code_answers
+            filtered_cot_answers, code_answers
         )
 
         self.g_count += 1
@@ -446,8 +457,7 @@ class BasicActor:
         print(f"Final aggregated answer: {aggregated_answer}")
 
         # Calculate and store timing information
-        question_end_time = time.time()
-        question_duration = question_end_time - question_start_time
+        question_duration = time.time() - self.question_start_time
         self.total_time += question_duration
 
         # Print timing information
@@ -469,7 +479,7 @@ class BasicActor:
     def stream_generate(self, prompts, gen_config, callbacks):
         # Setup answer's store
         num_prompts = len(prompts)
-        print(f"\n{'='*10}\nStarting generation with {num_prompts} samples\n{'='*10}")
+        print(f"\n{'='*30}\nStarting generation with {num_prompts} samples\n{'='*30}")
         sample_start_times = [time.time()] * num_prompts
 
         outputs = [""] * num_prompts  # Store complete output for each prompt
@@ -518,11 +528,8 @@ class BasicActor:
         iterator = self.main_model.stream_infer(prompts, gen_config)
 
         for response in iterator:
-            response = resp_queue.get_nowait()
-            if response is _END:
-                break
             try:
-                index = response.index
+                index = response.index if response is not None else 0
                 token_counts[index] = response.generate_token_len
                 yield_counts[index] += 1
                 if response.text is not None:
@@ -553,12 +560,6 @@ class BasicActor:
                     end_time = time.time()
                     elapsed = end_time - sample_start_times[index]
                     tokens_per_sec = token_counts[index] / elapsed if elapsed > 0 else 0
-                    # print(f"\n[COMPLETE] Sample {index+1} finished with reason '{response.finish_reason}'")
-                    # print(f"[COMPLETE] Tokens: {token_counts[index]} | Time: {elapsed:.2f}s | Speed: {tokens_per_sec:.2f} t/s")
-
-                    # Count how many samples are still running
-                    # remaining = sum(1 for status in completed_status if not status)
-                    # print(f"[STATUS] {num_prompts-remaining}/{num_prompts} samples completed, {remaining} still running")
 
                     for (
                         callback_finish_reason,
@@ -659,43 +660,42 @@ class BasicActor:
                 self._update_map_when_different_from_the_last(
                     cot_answers[index], cur_token_count, cot_answer
                 )
+                if cot_answer != old_answer:
+                    print(
+                        f"[Sample {index+1}] New CoT answer: {cot_answer} | Tokens:"
+                        f" {cur_token_count} "
+                    )
 
-                print(
-                    f"[Sample {index+1}] New CoT answer: {cot_answer} | Tokens:"
-                    f" {cur_token_count} "
-                )
-
+            # Try to get previous code
+            previous_code = None
+            if python_code_map_list[index]:
+                previous_code = list(python_code_map_list[index].values())[-1]
+                
             # Try to process code output
             code_answer, code_exec_error, python_code = self._try_parse_code_answer(
-                outputs[index]
+                outputs[index], previous_code
             )
-            if code_answer:
-                old_code_answer = (
-                    list(code_answers[index].values())[-1]
-                    if code_answers[index]
-                    else None
-                )
-                self._update_map_when_different_from_the_last(
-                    code_answers[index], cur_token_count, code_answer
-                )
-                if code_answer >= 0:
-                    print(
-                        f"[Sample {index+1}] New Code answer: {code_answer} | Tokens:"
-                        f" {cur_token_count} "
-                    )
-                else:
-                    print(
-                        f"[Sample {index+1}] Code error: {code_exec_error} | Tokens:"
-                        f" {cur_token_count} "
-                    )
-
-            if python_code:
-                if (
-                    not python_code_map_list[index]
-                    or list(python_code_map_list[index].values())[-1] != python_code
-                ):
-                    python_code_map_list[index][cur_token_count] = python_code
+            if python_code and python_code != previous_code:
+                # update python code 
+                python_code_map_list[index][cur_token_count] = python_code
+                # update code error
+                if code_exec_error is not None:
                     code_exec_error_map_list[index][cur_token_count] = code_exec_error
+                if code_answer is not None:
+                    self._update_map_when_different_from_the_last(
+                        code_answers[index], cur_token_count, code_answer
+                    )
+                    
+                    if code_answer >= 0:
+                        print(
+                            f"[Sample {index+1}] New Code answer: {code_answer} | Tokens:"
+                            f" {cur_token_count} "
+                        )
+                    else:
+                        print(
+                            f"[Sample {index+1}] Code error: {code_exec_error} | Tokens:"
+                            f" {cur_token_count} "
+                        )
 
         except Exception as e:
             LOGGER.error(f"Error in extract answer callback for index {index}: {e}")
@@ -703,15 +703,16 @@ class BasicActor:
     def _try_parse_boxed_answer(self, text):
         return self.answer_extractor.extract_boxed_text(text)
 
-    def _try_parse_code_answer(self, text):
+    def _try_parse_code_answer(self, text, previous_code):
         answer, code_exec_error, python_code = None, None, None
         try:
             # 提取 Python 代码
             python_codes = self.answer_extractor.extract_python_code(text)
             if python_codes:
-                python_code = self.answer_extractor.process_python_code(
-                    python_codes[-1]
-                )
+                python_code = self.answer_extractor.process_python_code(python_codes[-1])
+                if previous_code == python_code:
+                    return None, None, python_code
+                    
                 exec_success, exec_output = self.python_executor(python_code)
                 if exec_success:
                     pattern = r"(\d+)(?:\.\d+)?"
@@ -722,14 +723,14 @@ class BasicActor:
                     code_exec_error = exec_output
                     answer = -1
         except Exception as e:
-            LOGGER.warning(f"Error parsing code answer: {e}")
+            print(f"Error parsing code answer: {e}")
             code_exec_error = str(e)
             answer = -1
         return answer, code_exec_error, python_code
 
     @staticmethod
     def _update_map_when_different_from_the_last(map_, cur_token_count, new_value):
-        if not map_ or list(map_.values())[-1] != new_value:
+        if (not map_ or list(map_.values())[-1] != new_value) and new_value is not None:
             map_[cur_token_count] = new_value
 
 
@@ -801,13 +802,17 @@ class EarlyStopActor(BasicActor):
         try:
             if self.consistency_stop_triggered:
                 return False
-            # 收集所有有效答案
+            # collect valid answers
             self.valid_answers = []
-            for ans_list in cot_answers + code_answers:
-                if ans_list:
-                    for ans in ans_list.values():
-                        if ans is not None and ans > 0:
-                            self.valid_answers.append(ans)
+            for idx, (cot_ans, code_ans) in enumerate(zip(cot_answers, code_answers)):
+                if code_ans:  
+                    last_code_answer = list(code_ans.values())[-1]
+                    if last_code_answer is not None and last_code_answer > 0:
+                        self.valid_answers.append(last_code_answer)
+                elif cot_ans:  
+                    last_cot_answer = list(cot_ans.values())[-1]
+                    if last_cot_answer is not None and last_cot_answer > 0:
+                        self.valid_answers.append(last_cot_answer)
 
             for rule in self.consistency_rules:
                 if "recent" in rule:
@@ -882,6 +887,7 @@ class EarlyStopActor(BasicActor):
                     flush=True,
                 )
                 model._stop_all_sessions(session_id_start, current_target_samples + 2)
+                self.consistency_stop_triggered = True
                 return True
 
         except Exception as e:
@@ -978,7 +984,6 @@ class EarlyStopActor(BasicActor):
             # If the session has already naturally completed, no need to check or stop again.
             return False
         # 1. Ensure answers are extracted based on the latest output
-        #    (Calling this again ensures we use the absolute latest text segment)
         self._callback_extract_answer(
             index,
             session_id_start,
@@ -1002,27 +1007,30 @@ class EarlyStopActor(BasicActor):
             list(code_answers[index].values())[-1] if code_answers[index] else None
         )
 
-        # 3. Condition: At least one answer type has a non-None value
-        if last_cot_answer is not None or last_code_answer is not None:
-            print(
-                f"[Early Stop Session {index+1}]: Found non-empty answer (CoT:"
-                f" {last_cot_answer}, Code: {last_code_answer}) at token"
-                f" {token_counts[index]}. Stopping this session."
-            )
-            model._stop_one_session(session_id_start + index)
-            completed_status[index] = True
+        # Check if this is a code sample
+        is_code_sample = self.prompt_list[index][3] if index < len(self.prompt_list) else False
 
-            return True
+        # 3. Condition for stopping based on sample type
+        if is_code_sample:
+            # For code samples, stop only if we have found valid code with an answer
+            has_python_code = bool(python_code_map_list[index])
+            if has_python_code and last_code_answer is not None and last_code_answer > 0:
+                print(f"[Early Stop {index+1}]: Found code answer: {last_code_answer} at token {token_counts[index]}. Stopping this code session.")
+                model._stop_one_session(session_id_start + index)
+                completed_status[index] = True
+                return True
+        else:
+            # For CoT samples, stop as soon as we find a boxed answer
+            if last_cot_answer is not None:
+                print(f"[Early Stop {index+1}]: Found CoT answer: {last_cot_answer} at token {token_counts[index]}. Stopping this CoT session.")
+                model._stop_one_session(session_id_start + index)
+                completed_status[index] = True
+                return True
 
         return False  # No answer found yet, continue generation for this session.
 
     def predict_for_question(self, question: str, id_=None) -> int:
         """Override to add early stopping support"""
-        # Reset early stopping state
-        self.question_start_time = time.time()
-        self.valid_answers = []
-        self.consistency_stop_triggered = False
-
         # Call parent implementation
         return super().predict_for_question(question, id_)
 
@@ -1351,8 +1359,8 @@ if __name__ == "__main__":
     config = {
         "main_model": {
             "model_cfg": {
-                "model_path": "models/dpsk-qwen-14b-finetune-v1-epoch4-awq",
-                "gpu_indices": [2, 3],
+                "model_path": "/mnt/public/youyichen/youyc22/reasoning/all_models/dpsk-14b-sft-360-light/dpo_after_sft/epoch-4/awq_model/awq_default",
+                "gpu_indices": [4,5],
             },
             "inference_cfg": {
                 "max_batch_size": 32,
@@ -1360,7 +1368,7 @@ if __name__ == "__main__":
                 "enable_prefix_caching": True,
                 "cache_max_entry_count": 0.95,
                 "max_prefill_token_num": 8192,
-                "gen_max_new_tokens": 16384,
+                "gen_max_new_tokens": 32768,
             },
         },
         "actor": {
