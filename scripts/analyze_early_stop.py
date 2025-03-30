@@ -1,10 +1,11 @@
 import os
 import re
 import sys
-import glob
+import textwrap
+from collections import Counter
+
 import json
 import yaml
-
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -122,7 +123,12 @@ def get_answers_status_for_question(output_dir, ques_ind, correct_answer):
         ]
         # cot_answers_status_for_sample = [OTHER_ERROR if ans is None else int(ans ==  taa    correct_answer) + 1 for ans in cot_answers]
         cot_answers_status_for_sample = [
-            (ans_item[0], int(ans_item[1] == correct_answer) + 1, IS_COT_ANSWER)
+            (
+                ans_item[0],
+                int(ans_item[1] == correct_answer) + 1,
+                IS_COT_ANSWER,
+                ans_item[1],
+            )
             for ans_item in cot_answers
             if ans_item[1] is not None
         ]
@@ -169,6 +175,7 @@ def get_answers_status_for_question(output_dir, ques_ind, correct_answer):
                             ),
                             int(answer == correct_answer) + 1,
                             IS_CODE_ANSWER,
+                            answer,
                         )
                     )
             #     else:
@@ -200,8 +207,11 @@ def get_answers_status_for_question(output_dir, ques_ind, correct_answer):
             earlystop_lengths_for_question.append(
                 (sample_token_len, sample_token_len, sample_token_len)
             )
+
+        # match start (for answer sorting), WRONG_VALUE/CORRECT, IS_CODE_ANSWER/IS_COT_ANSWER, answer (for heatmap annotation)
         answers_status_for_sample = [
-            (item[0][0], item[1], item[2]) for item in answers_status_for_sample
+            (item[0][0], item[1], item[2], item[3])
+            for item in answers_status_for_sample
         ]
         answers_status_for_question.append(answers_status_for_sample)
 
@@ -218,9 +228,10 @@ def _add_legend(colors, labels, ax, **kwargs):
 
 
 def plot_answer_token_length(
-    answers_status_for_exp, earlystop_lengths_for_exp, save_path
+    answers_status_for_exp, earlystop_lengths_for_exp, c_a_answers_for_exp, save_path
 ):
     num_samples = len(earlystop_lengths_for_exp[0])
+    num_questions = len(earlystop_lengths_for_exp)
     plt.figure()
     df_earlystop_lengths_for_exp = pd.DataFrame(
         [
@@ -237,7 +248,7 @@ def plot_answer_token_length(
     )
 
     # Plot overall sample length's bar
-    sn.barplot(
+    ax = sn.barplot(
         df_earlystop_lengths_for_exp,
         x="ques_ind",
         y="sample_length",
@@ -245,6 +256,17 @@ def plot_answer_token_length(
         palette=["#EEEEEE"] * num_samples,
         legend=None,
     )
+    # set xticklabels on the first barplot for showing the aggregated and correct answers
+    ax.set_xticks(range(num_questions))
+    ax.set_xticklabels(
+        [
+            f"{ques_ind}\n({c_answer},\n{a_answer})"
+            for ques_ind, (c_answer, a_answer) in enumerate(c_a_answers_for_exp)
+        ],
+        fontsize=4,
+    )
+    for xtick, (c_answer, a_answer) in zip(ax.get_xticklabels(), c_a_answers_for_exp):
+        xtick.set_color("g" if c_answer == a_answer else "r")
 
     # Plot last answer's length's bar; set color based on correctness of the answer
     # light green & light red
@@ -302,6 +324,7 @@ def plot_answer_token_length(
         for bar_sample, color_sample in zip(bar_question, colors_question):
             bar_sample.set_facecolor(color_sample)
 
+    # Add customized legend to indicate the meaning of four bar color
     _add_legend(
         ["#327521", "#b04735", "#afeba0", "#ed928c"],
         ["First Correct", "First Wrong", "Last Correct", "Last Wrong"],
@@ -318,10 +341,8 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
         cache_dir = os.path.join(output_dir, "outputs_per_question", "cache_plot")
         os.makedirs(cache_dir, exist_ok=True)
 
-        num_questions = len(
-            glob.glob(os.path.join(output_dir, "outputs_per_question", "*.json"))
-        )
         results = read_file(os.path.join(output_dir, "results.json"))
+        num_questions = len(results)
 
         answer_stats_for_exp = []
         answers_status_for_exp = []
@@ -329,6 +350,7 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
 
         for ques_ind in range(num_questions):
             correct_answer = results[ques_ind]["correct_answer"]
+            aggregated_answer = results[ques_ind]["answer"]
 
             # Some code run for a long time. Caching results for quicker plotting for multiple times
             cache_file_for_question = os.path.join(cache_dir, f"{ques_ind}.json")
@@ -358,7 +380,7 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
 
             # Plot answer statusheatmap for this question; record number of valid answers
             plot_answers_status_for_question, _ = _pad_value(
-                answers_status_for_question, (None, NO_VALUE, None)
+                answers_status_for_question, (None, NO_VALUE, None, None)
             )
 
             if plot_every_question:
@@ -366,14 +388,44 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
                 plt.figure()
                 ax = sn.heatmap(
                     [
-                        [item_to_cmapind[tuple(item[1:])] for item in list_]
+                        [item_to_cmapind[tuple(item[1:3])] for item in list_]
                         for list_ in plot_answers_status_for_question
                     ],
+                    # print the answer on each cell, print emtpy string for padding cells
+                    annot=[
+                        ["" if item[3] is None else str(item[3]) for item in list_]
+                        for list_ in plot_answers_status_for_question
+                    ],
+                    fmt="s",
                     cmap=cmap,
                     vmin=0,
                     vmax=4,
                 )
-
+                ax.set_title(
+                    f"Question {ques_ind}. Correct: {correct_answer}; Aggregated:"
+                    f" {aggregated_answer}\nAll answers: "
+                    + "\n".join(
+                        textwrap.wrap(
+                            ", ".join(
+                                [
+                                    f"{cand_answer} ({num_vote} vs)"
+                                    for cand_answer, num_vote in sorted(
+                                        Counter(
+                                            [
+                                                list_[-1][3]
+                                                for list_ in answers_status_for_question
+                                                if list_
+                                            ]
+                                        ).items(),
+                                        key=lambda item: -item[1],
+                                    )
+                                ]
+                            ),
+                            100,
+                        )
+                    ),
+                    fontdict={"fontsize": 6},
+                )
                 ax.set_yticks(0.5 + np.arange(0, num_samples))
                 ax.tick_params(axis="both", which="minor", labelsize=8)
                 ax.set_yticklabels(
@@ -443,7 +495,10 @@ def save_correct_heatmap(output_dirs, plot_every_question=True, reuse_cache=True
         save_path = os.path.join(output_dir, "answer_token_length.pdf")
         print(f"Start plotting answer ratio to {save_path} ...")
         plot_answer_token_length(
-            answers_status_for_exp, earlystop_lengths_for_exp, save_path
+            answers_status_for_exp,
+            earlystop_lengths_for_exp,
+            [(result["correct_answer"], result["answer"]) for result in results],
+            save_path,
         )
 
 
