@@ -1,0 +1,3 @@
+[submodule "360-LLaMA-Factory"]
+	path = 360-LLaMA-Factory
+	url = git@github.com:Qihoo360/360-LLaMA-Factory.git
