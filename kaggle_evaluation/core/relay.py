@@ -33,7 +33,9 @@ _SERVICE_CONFIG = {
                 "maxAttempts": 5,
                 "initialBackoff": "0.1s",
                 "maxBackoff": "1s",
-                "backoffMultiplier": 1,  # Ensure relatively rapid feedback in the event of a crash
+                "backoffMultiplier": (
+                    1
+                ),  # Ensure relatively rapid feedback in the event of a crash
                 "retryableStatusCodes": ["UNAVAILABLE"],
             },
         }
@@ -127,7 +129,8 @@ def _serialize(data) -> kaggle_evaluation_proto.Payload:
         for key, value in data.items():
             if not isinstance(key, str):
                 raise TypeError(
-                    f"KaggleEvaluation only supports dicts with keys of type str, found {type(key)}."
+                    "KaggleEvaluation only supports dicts with keys of type str, found"
+                    f" {type(key)}."
                 )
             serialized_dict[key] = _serialize(value)
         return kaggle_evaluation_proto.Payload(
@@ -280,7 +283,8 @@ class Client:
 
         if not self._made_first_connection:
             raise RuntimeError(
-                f"Failed to connect to server after waiting {STARTUP_LIMIT_SECONDS} seconds"
+                "Failed to connect to server after waiting"
+                f" {STARTUP_LIMIT_SECONDS} seconds"
             )
         return response
 

@@ -76,7 +76,10 @@ class BaseGateway:
         if len(prediction_batch) != len(sample_submission_batch):
             raise GatewayRuntimeError(
                 GatewayRuntimeErrorType.INVALID_SUBMISSION,
-                f"Invalid predictions: expected {len(sample_submission_batch)} rows but received {len(prediction_batch)}",
+                (
+                    f"Invalid predictions: expected {len(sample_submission_batch)} rows"
+                    f" but received {len(prediction_batch)}"
+                ),
             )
 
         ROW_ID_COLUMN_INDEX = 0
@@ -190,7 +193,8 @@ class BaseGateway:
             pl.DataFrame(predictions).write_parquet("submission.parquet")
         else:
             raise ValueError(
-                f"Unsupported predictions type {type(predictions)}; can't write submission file"
+                f"Unsupported predictions type {type(predictions)}; can't write"
+                " submission file"
             )
 
     def write_result(self, error: Optional[GatewayRuntimeError] = None):

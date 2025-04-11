@@ -23,7 +23,8 @@ dependencies = [
     "lmdeploy",
     "tomark", "matplotlib", "seaborn", # for analysis scripts
     "autoawq", # for run awq quantization (scripts/awq_quantize.py)
-    "partial-json-parser" # for run smoothquant quantization (`lmdeploy lite smoothquant`)
+    "partial-json-parser", # for run smoothquant quantization (`lmdeploy lite smoothquant`)
+    "grpcio", "polars" # for use by local_eval_kaggle.py and the kaggle_evaluation module
 ]
 
 [project.optional-dependencies]

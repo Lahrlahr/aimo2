@@ -24,7 +24,6 @@ import torch
 from transformers import set_seed
 import pandas as pd
 from lmdeploy import pipeline, TurbomindEngineConfig, GenerationConfig
-from datasets import Dataset
 
 from imagination_aimo2.aggregators import *
 
