@@ -50,7 +50,7 @@ Specifically, we try to use the following three criteria to construct dpo pairs 
 
 * **Length ratio**:  $len(y_w) < ratio\textunderscore threshold * len(y_l)$
 * **Min Length**: $len(y_w) > min\textunderscore threshold$
-* **Similarity**: $sim(y_w,y_l) < si\textunderscore threshold$
+* **Similarity**: $sim(y_w,y_l) < sim\textunderscore threshold$
   * use sentence transformer model to calculate embeddings
 
 Applying the first two criteria, we construct the dataset dpo-1, which use to train the models we submit.
@@ -180,7 +180,7 @@ We use the commonly used self-consistency method for answer aggregation. We use 
   <img src="./figs/token_length.png" width="50%" />
 </p>
 
-**Method**: We can stop generation early for a question if sufficient certainty is achieved by examining the existing answers. Specifically, we terminate generation at the question level when a majority of the outputs are consistent, e.g., if 5 out of 7 answers agree. See the configurations in `early_stop_strategy.consistency_rules` in [`imagination_aimo2/local_eval_kaggle.py`](imagination_aimo2/local_eval_kaggle.py).
+**Method**: We can stop generation early for a question if sufficient certainty is achieved by examining the existing answers. Specifically, we terminate generation at the question level when a majority of the outputs are consistent, e.g., if 5 out of 7 answers agree. See the configurations in `early_stop_strategy.consistency_rules` in [`imagination_aimo2/local_eval_kaggle.py`](https://github.com/imagination-research/aimo2).
 
 ### Speed Hyperparameter Adjusting
 
