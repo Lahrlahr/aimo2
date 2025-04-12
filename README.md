@@ -13,7 +13,7 @@ This competition required optimizing both efficiency and reasoning performance. 
 
 * Part I: **Reasoning-Oriented Training** -- *Improve the model's reasoning ability*: Stage 1 - SFT and Stage 2 - DPO with selected data.
 * Part II: **Efficiency Optimization** -- *Improve inference efficiency*: Selecting a suitable inference engine, weight quantization, KV cache quantization.
-* Part III: **Inference-Time Strategies** -- *Improve efficiency-reasoning performance trade-off*: Prompt design, self-consistency aggregation, sample-level/question-level early stopping, and hyperparameter tweaking.
+* Part III: **Inference-Time Strategies** -- *Improve efficiency-reasoning performance trade-off*: Prompt design, self-consistency aggregation, sample-level/question-level early stopping, and some heuristic hyperparameter adjusting.
 
 For local validation, we used the AIME 2025 test set (30 problems) along with the reference set (10 problems), evaluating both average sample accuracy and aggregated accuracy (via self-consistency) to obtain preliminary judgments of our trial solutions.
 
@@ -134,7 +134,7 @@ We apply 4-bit AWQ weight quantization (by calling [`scripts/awq_quantize.py`](s
   <img src="./figs/output_speed.png" width="60%" />
 </p>
 
-* Local test (2xA100, batch size=32): W4KV8, W4KV16 decreases the overall latency by 40% and 20%-25% compared with FP16, respectively.
+* Local test (2xA800, batch size=32): W4KV8, W4KV16 decreases the overall latency by 40% and 20%-25% compared with FP16, respectively.
 
 **Some reasoning performance results**:
 
@@ -144,12 +144,14 @@ We apply 4-bit AWQ weight quantization (by calling [`scripts/awq_quantize.py`](s
 
 ### Overall Inference Workflow
 
-The inference workflow is shown in the figure below: A question is provided as the input. We first prepare two types of prompts, including the CoT prompt and the Code prompt ("Prompt Preparation Task"). Then, we let the LLM start batchify generation (15 samples) with `lmdeploy` ("LLM Generation Task"). In the mean time, we continuouly try extract the answer from the streaming output of each sample, aggregate the answers of multiple samples, and judge whether to early stop some generation:
+The inference workflow is shown in the figure below: A question is provided as the input. We first prepare two types of prompts, including the CoT prompt and the Code prompt ("Prompt Preparation Task"). Then, we let the LLM start batchify generation of multiple samples with `lmdeploy` ("LLM Generation Task"). In the mean time, we continuouly try extract the answer from the streaming output of each sample, aggregate the answers of multiple samples, and judge whether to early stop some generation:
 
 1. We do sample-level checking upon every N yields from the iterator got by the `stream_infer(...)` call, and judge whether to early stop the generation of the corresponding sample. The Python code executor and answer extractor components are used here.
 2. We do question-level checking upon the end of every sample, and judge whether to early stop the generation of all remaining samples of the current question. The answer aggregator component is used here.
 
 Finally, we return the aggregated answer.
+
+Note that, for each question, we adjust the speed-related hyperparameters (number of samples, sampling-level max time, question-level early-stop criterion) according to the remaining time, so that the time quota can be allocated in a more balanced way across the remaining questions when the remaining time is limited.
 
 ![Inference workflow](./figs/inference_workflow.png)
 
@@ -157,7 +159,9 @@ Finally, we return the aggregated answer.
 
 **Method**:
 
-* We use 15 samples for one question, and aggregate their answers by self-consistency. Note that we don't necessarily aggregate the answers of all samples, see [discussions below](#question-level-answer-aggregation--early-stopping) for more details.
+* Initially, we use 15 samples for one question, and aggregate their answers by self-consistency.
+  * Note that we don't necessarily aggregate the answers of all samples, see [discussions below](#question-level-answer-aggregation--early-stopping) for more details.
+  * Note that we decrease the number of samples when there is limited time left, see [discussions below](#speed-hyperparameter-adjusting) for more details.
 * We use the commonly used code-based reasoning: (1) Prompt the model to provide Python code to solve the problem; (2) Extract Python code from the output, create a subprocess to execute the code; (3) Extract the answer from the execution results.
 * We use two types of prompts - a CoT prompt and a Code prompt. Among 15 samples, 7 samples use the CoT prompt and 8 samples use the Code prompt:
 
@@ -210,10 +214,13 @@ We use the commonly used self-consistency method for answer aggregation. We use 
 
 **Method**: We can stop generation early for a question if sufficient certainty is achieved by examining the existing answers. Specifically, we terminate generation at the question level when a majority of the outputs are consistent, e.g., if 5 out of 7 answers agree. See the configurations in `early_stop_strategy.consistency_rules` in [`imagination_aimo2/local_eval_kaggle.py`](imagination_aimo2/local_eval_kaggle.py).
 
+### Speed Hyperparameter Adjusting
+(TODO @yyc)
+
 ## Team and Acknowledgement
 
-* Yichen You (youyc22@mails.tsinghua.edu.cn)
-* Xuefei Ning (foxdoraame@gmail.com, project leader)
-* Zinan Lin (linzinan1995@126.com)
+* Yichen You: youyc22@mails.tsinghua.edu.cn, Tsinghua University
+* Xuefei Ning: foxdoraame@gmail.com, Tsinghua University, project leader
+* Zinan Lin: linzinan1995@126.com, Microsoft Research
 
-We are thankful for many helpful online forum discussions and notebooks. We thank Shiyao Li for discussions, Infinigence-AI for providing 8 A100 GPUs in the early months and 16-24 A100 GPUs in the final two weeks.
+We are thankful for many helpful online forum discussions and notebooks. We thank Shiyao Li for discussions, Infinigence-AI for providing 8 A800 GPUs in the early months and 16-24 A800 GPUs in the final two weeks (our local machines have Intel(R) Xeon(R) Platinum 8358P CPU @ 2.60GHz and 8 NVIDIA A800 GPUs).
