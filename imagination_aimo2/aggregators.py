@@ -69,7 +69,7 @@ class AllVoteMajorityAggregator:
         valid_answers = [
             int(ans)
             for ans in final_code_answers + final_cot_answers
-            if ans is not None and int(ans) > 0
+            if ans is not None and int(ans) >= 0
         ]
         if not valid_answers:
             return 49

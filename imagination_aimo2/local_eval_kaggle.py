@@ -779,7 +779,7 @@ class EarlyStopActor(BasicActor):
         # Tracking variables for early stopping
         self.question_start_time = None
         self.valid_answers = []
-        # 获取一致性规则和速度设置
+        # Get consistency rules and speed settings
         self.consistency_rules = self.early_stop_strategy.get("consistency_rules", [])
         self.speed_settings = self.early_stop_strategy.get("speed_settings", {})
 
@@ -798,7 +798,7 @@ class EarlyStopActor(BasicActor):
         response,
         completed_status: List[bool],
     ):
-        """根据配置的一致性规则确定是否应该停止生成"""
+        """Determine whether to stop generation based on configured consistency rules"""
         try:
             if self.consistency_stop_triggered:
                 return False
@@ -840,7 +840,7 @@ class EarlyStopActor(BasicActor):
                             self.consistency_stop_triggered = True
                             return True
 
-                # 检查少于N个答案中的重复
+                # Check for repetitions in fewer than N answers
                 elif "max_answers" in rule:
                     max_answers = rule["max_answers"]
                     min_repeats = rule["min_repeats"]
@@ -864,7 +864,7 @@ class EarlyStopActor(BasicActor):
                         self.consistency_stop_triggered = True
                         return True
 
-            # 获取当前速度对应的设置
+            # Get settings for current speed
             speed_key = {
                 1: "very_fast",
                 2: "fast",
@@ -874,9 +874,9 @@ class EarlyStopActor(BasicActor):
             }.get(self.current_speed, "normal")
 
             speed_config = self.speed_settings.get(speed_key, {})
-            min_answers = speed_config.get("min_answers", 8)  # 默认值为8
+            min_answers = speed_config.get("min_answers", 8) # Default value is 8
 
-            # 基于速度的答案数量检查
+            # Check answer count based on speed
             if len(self.valid_answers) >= min_answers:
                 print(
                     (
@@ -909,14 +909,14 @@ class EarlyStopActor(BasicActor):
         response,
         completed_status: List[bool],
     ):
-        """根据超时策略检查生成是否应该超时"""
+        """Check if generation should timeout based on timeout strategy"""
         if self.question_start_time is None:
-            return False  # 没有开始时间无法检查超时
+            return False  # Cannot check timeout without a start time
 
         solve_time = time.time()
         solved_time = solve_time - self.question_start_time
 
-        # 构建有效答案列表（如果尚未构建）
+        # Build list of valid answers (if not already built)
         if not hasattr(self, "valid_answers") or len(self.valid_answers) == 0:
             self.valid_answers = []
             for ans_list in cot_answers + code_answers:
@@ -925,7 +925,7 @@ class EarlyStopActor(BasicActor):
                         if ans is not None and ans > 0:
                             self.valid_answers.append(ans)
 
-        # 获取当前速度对应的设置
+        # Get settings for current speed
         speed_key = {
             1: "very_fast",
             2: "fast",
@@ -938,9 +938,9 @@ class EarlyStopActor(BasicActor):
         timeout_minutes = speed_config.get("timeout_minutes", 10)  # 默认10分钟
         early_timeouts = speed_config.get("early_timeouts", [])
 
-        # 检查早期超时条件
+        # Check early timeout conditions
         for timeout_rule in early_timeouts:
-            time_threshold = timeout_rule.get("time", 10) * 60  # 转换为秒
+            time_threshold = timeout_rule.get("time", 10) * 60  # Convert to seconds
             min_answers = timeout_rule.get("min_answers", 8)
 
             if solved_time > time_threshold and len(self.valid_answers) >= min_answers:
@@ -951,8 +951,8 @@ class EarlyStopActor(BasicActor):
                 model._stop_all_sessions(session_id_start, current_target_samples + 2)
                 return True
 
-        # 绝对超时条件
-        current_end_time = timeout_minutes * 60  # 转换为秒
+        # Absolute timeout condition
+        current_end_time = timeout_minutes * 60  # Convert to seconds
         if solved_time > current_end_time or solve_time > self.cutoff_time:
             print("[End] Absolute time out!")
             model._stop_all_sessions(session_id_start, current_target_samples + 2)
