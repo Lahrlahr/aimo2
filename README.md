@@ -1,7 +1,8 @@
 # AI Mathematical Olympiad - Progress Prize 2 Solution (2nd place, "imagination-research" team)
 
 **[[Training data]](https://huggingface.co/datasets/imagination-research/aimo2-datasets)**
-**[[Model]](https://huggingface.co/imagination-research/deepseek-14b-sft-dpo4)**
+**[[Model1]](https://huggingface.co/imagination-research/deepseek-14b-sft-dpo2)**
+**[[Model2]](https://huggingface.co/imagination-research/deepseek-14b-sft-dpo4)**
 
 A simple wrap-up of the competition: The task contains a total of 110 problems at "National Olympiad level" difficulty, provided in plain text LaTeX format. Problem solutions are integers between 0 and 1000. 10 problems serve as the *reference*, 50 problems are for *public leaderboard* evaluation, and 50 problems are for *private leaderboard evaluation*. The leaderboard ranks submissions based on the number of correctly solved problems. Regarding the evaluation platform and computational constraints, one submission solving 50 problems must complete within 5 hours on 4×L4 GPUs (total memory 90GB).
 
@@ -83,12 +84,13 @@ We choose the default subset of [`OpenR1-Math-220k`](https://huggingface.co/data
 
 Specifically, we try to use the following three criteria to construct dpo pairs ($y_w、y_l$ means chosen response and rejected response):
 
-* **Length ratio**:  $len(y_w) < ratio\_threshold * len(y_l)$
-* **Min Length**: $len(y_w) > min\_threshold$
-* **Similarity**: $sim(y_w,y_l) < sim\_threshold$
+* **Length ratio**:  $len(y_w) < ratio\textunderscore threshold * len(y_l)$
+* **Min Length**: $len(y_w) > min\textunderscore threshold$
+* **Similarity**: $sim(y_w,y_l) < si\textunderscore threshold$
   * use sentence transformer model to calculate embeddings
 
 Applying the first two criteria, we construct the dataset dpo-1, which use to train the models we submit.
+
 Applying the three criteria, we construct the dataset dpo-2, which we use to train another model, but its performance is similar to the model we submit.
 
 We use [`360-LLaMA-Factory`](https://github.com/Qihoo360/360-LLaMA-Factory/tree/adfd1708b94a921637c3821bca4a6dd3d81d0387) becase they add sequence parallelism (SP) technology to support longer context training with limited memory
@@ -97,6 +99,9 @@ We use a single 8×A800 machine to train for 4 epochs on dpo-1 daatset(2k pairs)
 
 And we get two models we finally submitted:
 **[`deepseek-14b-sft-dpo2`](https://huggingface.co/imagination-research/deepseek-14b-sft-dpo2)** and **[`deepseek-14b-sft-dpo4`](https://huggingface.co/imagination-research/deepseek-14b-sft-dpo4)**
+
+ALl our training data:
+**[`training data`](https://huggingface.co/datasets/imagination-research/aimo2-datasets)**
 
 <p align="middle">
   <img src="./figs/dpo_result.png" width="80%" />
@@ -215,7 +220,12 @@ We use the commonly used self-consistency method for answer aggregation. We use 
 **Method**: We can stop generation early for a question if sufficient certainty is achieved by examining the existing answers. Specifically, we terminate generation at the question level when a majority of the outputs are consistent, e.g., if 5 out of 7 answers agree. See the configurations in `early_stop_strategy.consistency_rules` in [`imagination_aimo2/local_eval_kaggle.py`](imagination_aimo2/local_eval_kaggle.py).
 
 ### Speed Hyperparameter Adjusting
-(TODO @yyc)
+
+**Motivation**: The time to solve questions of different difficulty levels varies greatly, we design a `adjust_speed` module to dynamically adjust some hyperparameters.
+
+**Method**: As reasoning progresses, our `adjust_speed` module calculates the remaining time and number of remaining questions, and dynamically adjusts the model's sampling number and early stopping strategy accordingly.
+
+For example, the default speed is `3(normal)`, if the system detects that the average remaining time for each question is less than 5 minutes, it automatically adjust the speed to `1(fastest)` .This means the number of samples is decreased to 10 and the maximum reasoning time for each question is also decreased. Please refer to our code for detailed implementation.
 
 ## Team and Acknowledgement
 
