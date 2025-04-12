@@ -1,4 +1,4 @@
-# 2nd place solution(imagination-research)
+# 2nd place solution (Team `imagination-research`)
 
 - **Notebook**: https://www.kaggle.com/code/youyc22/imagination-research-2nd-place-solution/
 - **Model**: https://huggingface.co/imagination-research/deepseek-14b-sft-dpo4, https://huggingface.co/imagination-research/deepseek-14b-sft-dpo2
@@ -190,13 +190,16 @@ We use the commonly used self-consistency method for answer aggregation. We use 
 
 For example, the default speed is `3(normal)`, if the system detects that the average remaining time for each question is less than 5 minutes, it automatically adjust the speed to `1(fastest)` .This means the number of samples is decreased to 10 and the maximum reasoning time for each question is also decreased. Please refer to our code for detailed implementation.
 
-## Other methods we tried but did not work
+## Other methods we tried but did not reach a conclusion and include in our final solution
 - GRPO: we tried four training runs but did not observe significant improvement on accuracy.
 
-- RAG: we use this [dataset](https://www.kaggle.com/datasets/artemgoncarov/math-problems-imo) as a document bank. When solving a question, we fetch 1~2 most similar questions from the bank, use them and their corresponding solutions as the few-shot demonstrations. But we did not get improvement on AIME2025 nor online submission.
+- RAG: we use this [dataset](https://www.kaggle.com/datasets/artemgoncarov/math-problems-imo) as a document bank. When solving a question, we fetch 1~2 most similar questions from the bank, use them and their corresponding solutions as the few-shot demonstrations. But we did not get improvement on AIME2025 nor online submission. 
 
-- Model-based Aggregation: we give the LLM the 5 most frequent answers, and one representatitive rationale for each, ask the LLM to reason about the correct answer. But this aggregation method cannot stably achieve improvements.
+- Model-based Aggregation: We give the LLM the 5 most frequent answers, and one representatitive rationale for each, ask the LLM to reason about the correct answer. But this aggregation method cannot stably achieve improvements. 
 
+- Quantization-related trials: We try quantization-aware training (QAT) by finetuning the scales of an AWQ-quantized model with DPO on our 2k-sized DPO dataset, but that doesn't bring improvement. We also try to apply the reparametrization of `W_k` and `W_q` to get more channel-balanced key for better KV cache quantization. This brings a consistent but small reasoning performance improvement in our local test, especially in the KV4 setting. However, as we don't have enough submission quota to tune other hyperparameters for KV4 setting, our final solution doesn't use KV4.
+
+We decided to briefly share these preliminary trials, but please note that they are not thorough enough to provide a reliable negative signal. Our qualitative inspection of the above trials actually suggests potentials to further explore, but we simply lacked the capacity to explore them further.
 
 
 
