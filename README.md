@@ -4,7 +4,7 @@
 **[[Model1]](https://huggingface.co/imagination-research/deepseek-14b-sft-dpo2)**
 **[[Model2]](https://huggingface.co/imagination-research/deepseek-14b-sft-dpo4)**
 
-A simple wrap-up of the competition: The task contains a total of 110 problems at "International Mathematical Olympiad level" difficulty, provided in plain text LaTeX format. Problem solutions are integers between 0 and 1000. 10 problems serve as the *reference*, 50 problems are for *public leaderboard* evaluation, and 50 problems are for *private leaderboard evaluation*. The leaderboard ranks submissions based on the number of correctly solved problems. Regarding the evaluation platform and computational constraints, one submission solving 50 problems must be completed within 5 hours on 4×L4 GPUs (total memory 90GB).
+A simple wrap-up of the competition: The task contains a total of 110 problems at "National Mathematical Olympiad level" difficulty, provided in plain text LaTeX format. Problem solutions are integers between 0 and 1000. 10 problems serve as the *reference*, 50 problems are for *public leaderboard* evaluation, and 50 problems are for *private leaderboard evaluation*. The leaderboard ranks submissions based on the number of correctly solved problems. Regarding the evaluation platform and computational constraints, one submission solving 50 problems must be completed within 5 hours on 4×L4 GPUs (total memory 90GB).
 
 **Our solution gets the 2nd place. It gets 34/50 on the *public leaderboards* (ranked 1st), and 31/50 (ranked 2nd) on the *private leaderboard*.** Check [`imagination_aimo2/local_eval_kaggle.py`](imagination_aimo2/local_eval_kaggle.py) for the submission code (a cleaned version).
 
