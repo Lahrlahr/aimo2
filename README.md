@@ -84,7 +84,7 @@ We choose the default subset of [`OpenR1-Math-220k`](https://huggingface.co/data
 
 Specifically, we try to use the following four criteria to construct DPO pairs ($y_w,y_l$ mean the chosen response and the rejected response respectively):
 
-* **Correctness**: $y_w​$ must be correct, $y_l​$ may be correct or incorrect
+* **Correctness**: $y_w$must be correct, $y_l$may be correct or incorrect
 * **Min Length**: $len(y_w) > min\textunderscore threshold$
 * **Length ratio**:  $len(y_w) < ratio\textunderscore threshold * len(y_l)$
 * **Similarity**: $sim(y_w,y_l) < si\textunderscore threshold$
@@ -119,6 +119,7 @@ All our training data can be found here:
 We choose [`lmdeploy`](https://github.com/InternLM/lmdeploy) as the LLM inference framework. Compared with `vllm`, the `lmdeploy` framework with the TurboMind engine can provide higher throughput and shorter model initialization time.
 
 The first picture comes from [`here`](https://github.com/InternLM/lmdeploy)
+
 <table>
   <tr>
     <td><img src="./figs/throughput_com.png" alt="SFT Accuracy"></td>
@@ -135,7 +136,7 @@ We apply 4-bit AWQ weight quantization (by calling [`scripts/awq_quantize.py`](s
 **Some efficiency results**:
 
 * Online test (4xL4, batch size=15): W4KV8 decreases the time per output token by about 20% compared with W4KV16, 55% compared with FP16.
-  
+
 <p align="middle">
   <img src="./figs/output_speed.png" width="60%" />
 </p>
