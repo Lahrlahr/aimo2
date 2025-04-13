@@ -82,16 +82,17 @@ We use DPO to reduce the output length of the model
 
 We choose the default subset of [`OpenR1-Math-220k`](https://huggingface.co/datasets/open-r1/OpenR1-Math-220k/tree/main/data) to build our dataset
 
-Specifically, we try to use the following three criteria to construct DPO pairs ($y_w、y_l$ mean the chosen response and the rejected response respectively):
+Specifically, we try to use the following four criteria to construct DPO pairs ($y_w,y_l$ mean the chosen response and the rejected response respectively):
 
-* **Length ratio**:  $len(y_w) < ratio\textunderscore threshold * len(y_l)$
+* **Correctness**: $y_w​$ must be correct, $y_l​$ may be correct or incorrect
 * **Min Length**: $len(y_w) > min\textunderscore threshold$
+* **Length ratio**:  $len(y_w) < ratio\textunderscore threshold * len(y_l)$
 * **Similarity**: $sim(y_w,y_l) < si\textunderscore threshold$
   * use sentence transformer model to calculate embeddings
 
-Applying the first two criteria, we construct the dataset dpo-1, which is used to train the models we submit.
+Applying the first three criteria, we construct the dataset dpo-1, which is used to train the models we submit.
 
-Applying the three criteria, we construct the dataset dpo-2, which is used to train another model, but its performance is similar to the model we submit.
+Applying the four criteria, we construct the dataset dpo-2, which is used to train another model, but its performance is similar to the model we submit.
 
 We use [`360-LLaMA-Factory`](https://github.com/Qihoo360/360-LLaMA-Factory/tree/adfd1708b94a921637c3821bca4a6dd3d81d0387) because they add sequence parallelism (SP) technology to support longer context training with limited memory.
 
