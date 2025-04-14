@@ -13,8 +13,7 @@ classifiers = [
 dependencies = [
     "tqdm",
     "pandas",
-    "datasets",
-    "fschat", "transformers", "accelerate",
+    "transformers",
     "termcolor",
     "PyYaml",
     "ipdb",
