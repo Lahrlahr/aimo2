@@ -236,3 +236,15 @@ For example, the default speed is `3(normal)`, if the system detects that the av
 * Zinan Lin: linzinan1995@gmail.com, Microsoft Research
 
 We are thankful for many helpful online forum discussions and notebooks. We thank Shiyao Li for the discussions, Infinigence-AI for providing 8 A800 GPUs in the early months and 16-24 A800 GPUs in the final two weeks (our local machines have Intel(R) Xeon(R) Platinum 8358P CPU @ 2.60GHz and 8 NVIDIA A800 GPUs).
+
+If you would like to refer to our work, you can directly cite this repository:
+```
+@misc{imaginationaimo2025,
+  author = {Yichen You, Xuefei Ning, Zinan Lin},
+  title = {AI Mathematical Olympiad - Progress Prize 2 Solution (2nd place, "imagination-research" team)},
+  year = {2025},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/imagination-research/aimo2/}}
+}
+```
