@@ -231,7 +231,7 @@ For example, the default speed is `3(normal)`, if the system detects that the av
 
 ## Team and Acknowledgement
 
-* Yichen You: youyc22@mails.tsinghua.edu.cn, Tsinghua University
+* Yichen You: yiyouyc22yyc@gmail.com, Tsinghua University
 * Xuefei Ning: foxdoraame@gmail.com, Tsinghua University, project leader
 * Zinan Lin: linzinan1995@gmail.com, Microsoft Research
 
