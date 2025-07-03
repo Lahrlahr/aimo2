@@ -1,3 +1,4 @@
 [submodule "360-LLaMA-Factory"]
 	path = 360-LLaMA-Factory
 	url = git@github.com:Lahrlahr/360-LLaMA-Factory.git
+    branch = main
